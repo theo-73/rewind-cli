@@ -72,7 +72,8 @@ describe('Claude Code Integration & Bridge (src/integrations/claude.js)', () => 
       storage.addRecoveryAttempt(inc.id, {
         cause: 'PostgreSQL container stopped',
         change: 'docker start postgres-dev',
-        verifyCmd: 'pg_isready -h localhost -p 5432'
+        verifyCmd: 'pg_isready -h localhost -p 5432',
+        baselineFailed: true
       });
       storage.recordVerificationRun(inc.id, 1, {
         command: 'pg_isready -h localhost -p 5432',
@@ -126,7 +127,8 @@ describe('Claude Code Integration & Bridge (src/integrations/claude.js)', () => 
       storage.addRecoveryAttempt(inc.id, {
         cause: 'Missing esbuild peer dependency',
         change: 'npm install --save-dev esbuild',
-        verifyCmd: 'npm run build'
+        verifyCmd: 'npm run build',
+        baselineFailed: true
       });
       storage.recordVerificationRun(inc.id, 1, {
         command: 'npm run build',

@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+// Startup Node.js engine version guard
+const [major, minor] = process.versions.node.split('.').map(Number);
+if (major < 22 || (major === 22 && minor < 13)) {
+  console.error(`rewind: Node.js >= 22.13.0 is required (running on ${process.version}). Please upgrade Node.js.`);
+  process.exit(1);
+}
+
 import { runCLI } from '../src/cli.js';
 
 // Suppress SQLite ExperimentalWarning

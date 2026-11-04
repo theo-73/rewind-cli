@@ -3,7 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { isValidRecord, normalizeRecordToCurrentSchema, boundOutput } from './record.js';
-import { IncidentStatus, RecoveryAttemptStatus, ProvenanceType, EvidenceQuality } from './state.js';
+import { IncidentStatus, RecoveryAttemptStatus, ProvenanceType, EvidenceQuality, ProofTier, computeProofTier } from './state.js';
 import { computeFingerprint, inferFingerprintVersion } from './fingerprint.js';
 import { evaluateStaleness } from './staleness.js';
 import { extractNegativeMemory } from './negative_memory.js';
@@ -15,16 +15,21 @@ import {
   readLastJournalEvent,
   readCheckpoint,
   writeCheckpoint,
-  saveEvidenceArtifact
+  saveEvidenceArtifact,
+  createEvent,
+  acquireJournalLock,
+  GENESIS_HASH
 } from './journal.js';
-import { projectEventsToRecords, projectEventsToObservations, applyEventToRecordMap, PROJECTION_SCHEMA_VERSION } from './projection.js';
+import { projectEventsToRecords, projectEventsToObservations, applyEventToRecordMap, safeAtomicRenameSync, PROJECTION_SCHEMA_VERSION } from './projection.js';
+import { canonicalStringify } from './canonical.js';
 import { verifyLedgerIntegrity } from './integrity.js';
 import { analyzePatternsFromJournal } from './patterns.js';
 import { buildAgentContext } from './context.js';
 import { runDoctorDiagnostics, executeDoctorRepair } from './doctor.js';
 import { captureSafeEnvironment } from '../environment.js';
 import { readGitMetadata } from '../git.js';
-import { CliError } from '../errors.js';
+import { CliError, UsageError } from '../errors.js';
+import { redactRecordForStorage, isTrivialVerifyCommand, redactSecrets, redactCommandArgs, redactCommandString } from '../sanitizer.js';
 
 /**
  * Normalizes an incident ID string by stripping common prefixes like "#", "RW-", or "rw-".
@@ -148,6 +153,8 @@ export class StorageEngine {
       } catch (err) {
         // Ignore errors if already closed
       }
+      this.db = null;
+      this.initialized = false;
     }
   }
 
@@ -810,26 +817,28 @@ export class StorageEngine {
       this.init();
     }
 
+    const cleanCapture = redactRecordForStorage(captureResult);
+
     // Check for regression against previously verified records
     let initialState = options.initialState;
     let regressionOf = options.regressionOf || null;
 
     const computed = computeFingerprint({
-      command: captureResult.command || '',
-      args: captureResult.args || [],
-      exitCode: captureResult.exitCode,
-      signal: captureResult.signal,
-      stderr: captureResult.stderr || '',
-      stdout: captureResult.stdout || ''
+      command: cleanCapture.command || '',
+      args: cleanCapture.args || [],
+      exitCode: cleanCapture.exitCode,
+      signal: cleanCapture.signal,
+      stderr: cleanCapture.stderr || '',
+      stdout: cleanCapture.stdout || ''
     });
-    const fingerprint = captureResult.fingerprint || computed.fingerprint;
-    const normalizedError = captureResult.normalizedError || computed.normalizedError;
+    const fingerprint = cleanCapture.fingerprint || computed.fingerprint;
+    const normalizedError = cleanCapture.normalizedError || computed.normalizedError;
 
-    if (captureResult.success) {
+    if (cleanCapture.success) {
       return null;
     }
 
-    if (!captureResult.success && !initialState) {
+    if (!cleanCapture.success && !initialState) {
       const priorVerified = this.findVerifiedByFingerprint(fingerprint);
       if (priorVerified) {
         initialState = IncidentStatus.REGRESSED;
@@ -840,8 +849,8 @@ export class StorageEngine {
     }
 
     // Process heavy evidence: save to isolated evidence store and bound output
-    const rawStderr = captureResult.stderr || '';
-    const rawStdout = captureResult.stdout || '';
+    const rawStderr = cleanCapture.stderr || '';
+    const rawStdout = cleanCapture.stdout || '';
     const fullOutput = rawStdout + (rawStdout && rawStderr ? '\n' : '') + rawStderr;
 
     const { evidenceHash, evidenceRef } = saveEvidenceArtifact(this.ledgerDir, fullOutput);
@@ -856,24 +865,24 @@ export class StorageEngine {
       type: eventType,
       incidentId: 'AUTO',
       payload: {
-        command: captureResult.command || '',
-        args: Array.isArray(captureResult.args) ? captureResult.args : [],
-        fullCommand: captureResult.fullCommand || `${captureResult.command || ''} ${(captureResult.args || []).join(' ')}`.trim(),
-        cwd: captureResult.cwd || '',
-        durationMs: typeof captureResult.durationMs === 'number' ? captureResult.durationMs : 0,
-        exitCode: typeof captureResult.exitCode === 'number' ? captureResult.exitCode : 1,
-        signal: captureResult.signal || null,
+        command: cleanCapture.command || '',
+        args: Array.isArray(cleanCapture.args) ? cleanCapture.args : [],
+        fullCommand: cleanCapture.fullCommand || `${cleanCapture.command || ''} ${(cleanCapture.args || []).join(' ')}`.trim(),
+        cwd: cleanCapture.cwd || '',
+        durationMs: typeof cleanCapture.durationMs === 'number' ? cleanCapture.durationMs : 0,
+        exitCode: typeof cleanCapture.exitCode === 'number' ? cleanCapture.exitCode : 1,
+        signal: cleanCapture.signal || null,
         fingerprint: fingerprint || '',
-        fingerprintVersion: inferFingerprintVersion(fingerprint, captureResult.fingerprintVersion || computed.fingerprintVersion),
+        fingerprintVersion: inferFingerprintVersion(fingerprint, cleanCapture.fingerprintVersion || computed.fingerprintVersion),
         normalizedError: normalizedError || '',
         evidenceHash: evidenceHash || '',
         evidenceRef: evidenceRef || '',
         stderrSnippet: boundStderr.bounded || '',
         stdoutSnippet: boundStdout.bounded || '',
         isTruncated: Boolean(isTruncated),
-        diagnostic: captureResult.diagnostic || null,
-        environment: captureResult.environment || {},
-        git: captureResult.git || { isGit: false },
+        diagnostic: cleanCapture.diagnostic || null,
+        environment: cleanCapture.environment || {},
+        git: cleanCapture.git || { isGit: false },
         regressionOf: regressionOf || null
       }
     });
@@ -1194,6 +1203,23 @@ export class StorageEngine {
       ? EvidenceQuality.UNVERIFIED
       : (attemptData.change ? EvidenceQuality.USER_REPORTED : EvidenceQuality.UNVERIFIED);
 
+    let verifyCmd = attemptData.verifyCmd || null;
+    if (verifyCmd) {
+      const vCmd = String(verifyCmd).trim();
+      if (vCmd.length > 500) {
+        throw new UsageError('Verification command exceeds maximum allowed length of 500 characters.');
+      }
+      if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(vCmd)) {
+        throw new UsageError('Verification command contains invalid control characters.');
+      }
+      if (isTrivialVerifyCommand(vCmd)) {
+        throw new UsageError(`Verification command "${vCmd}" is trivial and cannot empirically prove a fix.`);
+      }
+      verifyCmd = vCmd;
+    }
+
+    const source = attemptData.source || 'cli';
+
     // Append recovery.proposed event to authoritative journal
     const event = appendJournalEvent(this.ledgerDir, {
       type: 'recovery.proposed',
@@ -1204,14 +1230,16 @@ export class StorageEngine {
         causeProvenance: attemptData.cause ? (attemptData.causeProvenance || ProvenanceType.USER_REPORTED) : null,
         change: attemptData.change || null,
         changeProvenance: attemptData.change ? (attemptData.changeProvenance || ProvenanceType.USER_REPORTED) : null,
-        verifyCmd: attemptData.verifyCmd || null,
-        verifyCmdProvenance: attemptData.verifyCmd ? (attemptData.verifyCmdProvenance || ProvenanceType.USER_REPORTED) : null,
+        verifyCmd,
+        verifyCmdProvenance: verifyCmd ? (attemptData.verifyCmdProvenance || ProvenanceType.USER_REPORTED) : null,
         isFixed,
         status: attemptData.status || initialStatus,
         isExternal: Boolean(attemptData.isExternal),
         externalVerification: attemptData.externalVerification || null,
         observedChanges: attemptData.observedChanges || null,
-        evidenceQuality: attemptData.evidenceQuality || quality
+        evidenceQuality: attemptData.evidenceQuality || quality,
+        source,
+        baselineFailed: Boolean(attemptData.baselineFailed)
       }
     });
 
@@ -1446,5 +1474,128 @@ export class StorageEngine {
    */
   repairHealth(config = {}, options = {}) {
     return executeDoctorRepair(this.ledgerDir, config, options);
+  }
+
+  /**
+   * Scrubs raw unredacted secrets from the historical journal and evidence files,
+   * recomputes canonical event digests and the cryptographic SHA-256 hash chain,
+   * updates the trusted checkpoint, and safely rebuilds projections.
+   *
+   * @param {object} [options={}]
+   * @returns {{ scrubbedCount: number, totalEvents: number, headChainHash: string }}
+   */
+  scrubLedger(options = {}) {
+    if (!this.initialized) {
+      this.init();
+    }
+    const lockPath = path.join(this.ledgerDir, 'journal.lock');
+    const lock = acquireJournalLock(lockPath);
+    try {
+      const { events } = readJournalEvents(this.journalPath);
+      if (events.length === 0) {
+        return { scrubbedCount: 0, totalEvents: 0, headChainHash: GENESIS_HASH };
+      }
+
+      let scrubbedCount = 0;
+      let prevHash = GENESIS_HASH;
+      const scrubbedLines = [];
+
+      for (let i = 0; i < events.length; i++) {
+        const ev = events[i];
+        const payload = ev.payload ? { ...ev.payload } : {};
+        let modified = false;
+
+        if (payload.command) {
+          const redacted = redactSecrets(payload.command);
+          if (redacted !== payload.command) { payload.command = redacted; modified = true; }
+        }
+        if (Array.isArray(payload.args)) {
+          const redactedArgs = redactCommandArgs(payload.args);
+          if (JSON.stringify(redactedArgs) !== JSON.stringify(payload.args)) {
+            payload.args = redactedArgs;
+            modified = true;
+          }
+        }
+        if (payload.fullCommand) {
+          const redacted = redactCommandString(payload.fullCommand);
+          if (redacted !== payload.fullCommand) { payload.fullCommand = redacted; modified = true; }
+        }
+        if (payload.stdoutSnippet) {
+          const redacted = redactSecrets(payload.stdoutSnippet);
+          if (redacted !== payload.stdoutSnippet) { payload.stdoutSnippet = redacted; modified = true; }
+        }
+        if (payload.stderrSnippet) {
+          const redacted = redactSecrets(payload.stderrSnippet);
+          if (redacted !== payload.stderrSnippet) { payload.stderrSnippet = redacted; modified = true; }
+        }
+        if (payload.output) {
+          const redacted = redactSecrets(payload.output);
+          if (redacted !== payload.output) { payload.output = redacted; modified = true; }
+        }
+
+        if (modified) {
+          scrubbedCount++;
+        }
+
+        const newSeq = i + 1;
+        const scrubbedEvent = createEvent({
+          type: ev.type,
+          incidentId: ev.incidentId,
+          payload,
+          prevHash,
+          sequence: newSeq
+        });
+
+        prevHash = scrubbedEvent.chainHash;
+        scrubbedLines.push(canonicalStringify(scrubbedEvent));
+      }
+
+      // Also scrub evidence directory files if any
+      if (fs.existsSync(this.evidenceDir)) {
+        const evFiles = fs.readdirSync(this.evidenceDir);
+        for (const f of evFiles) {
+          if (!f.endsWith('.log')) continue;
+          const fp = path.join(this.evidenceDir, f);
+          try {
+            const raw = fs.readFileSync(fp, 'utf8');
+            const clean = redactSecrets(raw);
+            if (clean !== raw) {
+              fs.writeFileSync(fp, clean, 'utf8');
+            }
+          } catch {}
+        }
+      }
+
+      // Write scrubbed journal atomically
+      if (!fs.existsSync(this.tmpDir)) {
+        fs.mkdirSync(this.tmpDir, { recursive: true, mode: 0o700 });
+      }
+      const tmpJournal = path.join(this.tmpDir, `journal_scrub_${Date.now()}.tmp`);
+      fs.writeFileSync(tmpJournal, scrubbedLines.join('\n') + '\n', { mode: 0o600 });
+      safeAtomicRenameSync(tmpJournal, this.journalPath);
+
+      // Re-read checkpoint and write updated head
+      const lastScrubbed = JSON.parse(scrubbedLines[scrubbedLines.length - 1]);
+      writeCheckpoint(this.ledgerDir, {
+        headSequence: lastScrubbed.sequence,
+        headEventId: lastScrubbed.eventId,
+        headChainHash: lastScrubbed.chainHash,
+        eventCount: scrubbedLines.length,
+        highestIncidentId: this.highestId
+      });
+
+      // Re-initialize DB and rebuild projections
+      this.close();
+      this.init();
+      this.rebuildIndex({ syncDisk: true });
+
+      return {
+        scrubbedCount,
+        totalEvents: events.length,
+        headChainHash: lastScrubbed.chainHash
+      };
+    } finally {
+      lock.release();
+    }
   }
 }

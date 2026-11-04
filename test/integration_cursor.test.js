@@ -71,7 +71,8 @@ describe('Cursor Integration & Bridge (src/integrations/cursor.js)', () => {
       storage.addRecoveryAttempt(inc.id, {
         cause: 'Redis service not running',
         change: 'docker compose up -d redis',
-        verifyCmd: 'redis-cli ping'
+        verifyCmd: 'redis-cli ping',
+        baselineFailed: true
       });
       storage.recordVerificationRun(inc.id, 1, {
         command: 'redis-cli ping',

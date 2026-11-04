@@ -6,7 +6,7 @@ import { evaluateStaleness } from './staleness.js';
 import { analyzeEvidenceConflicts } from './contradiction.js';
 import { analyzePatternsFromEvents } from './patterns.js';
 import { searchRecords } from './search.js';
-import { redactSecrets } from '../sanitizer.js';
+import { redactSecrets, sanitizeOutput } from '../sanitizer.js';
 import { captureSafeEnvironment } from '../environment.js';
 import { IncidentStatus, RecoveryAttemptStatus } from './state.js';
 import { CliError } from '../errors.js';
@@ -24,12 +24,12 @@ export const MAX_MATCHES_LIMIT = 5;
  */
 function sanitizeSnippet(str = '', maxChars = MAX_SNIPPET_CHARS) {
   if (!str || typeof str !== 'string') return '';
-  const redacted = redactSecrets(str);
-  if (redacted.length <= maxChars) return redacted;
+  const clean = sanitizeOutput(redactSecrets(str));
+  if (clean.length <= maxChars) return clean;
   const half = Math.floor(maxChars / 2);
-  const head = redacted.slice(0, half);
-  const tail = redacted.slice(-half);
-  return `${head}\n\n[... truncated ${redacted.length - maxChars} characters by Rewind ...]\n\n${tail}`;
+  const head = clean.slice(0, half);
+  const tail = clean.slice(-half);
+  return `${head}\n\n[... truncated ${clean.length - maxChars} characters by Rewind ...]\n\n${tail}`;
 }
 
 /**

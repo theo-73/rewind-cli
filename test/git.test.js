@@ -6,14 +6,25 @@ import fs from 'node:fs';
 import { readGitMetadata } from '../src/git.js';
 
 describe('Zero-Dependency Git Metadata Reader (src/git.js)', () => {
-  test('reads current repository git metadata accurately', () => {
-    const meta = readGitMetadata(process.cwd());
-    assert.equal(meta.isGit, true);
-    assert.ok(meta.gitDir);
-    assert.equal(meta.workingTreeState, 'unverified');
-    assert.ok(meta.branch === null || typeof meta.branch === 'string');
-    assert.ok(meta.headCommit);
-    assert.match(meta.headCommit, /^[0-9a-f]{40}$|^[0-9a-f]{64}$/i);
+  test('reads git metadata accurately when repository structure exists', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-git-fixture-'));
+    try {
+      const gitDir = path.join(tmpDir, '.git');
+      fs.mkdirSync(path.join(gitDir, 'refs', 'heads'), { recursive: true });
+      fs.writeFileSync(path.join(gitDir, 'HEAD'), 'ref: refs/heads/main\n');
+      const fakeCommit = 'a1b2c3d4e5f60123456789abcdef0123456789ab';
+      fs.writeFileSync(path.join(gitDir, 'refs', 'heads', 'main'), `${fakeCommit}\n`);
+
+      const meta = readGitMetadata(tmpDir);
+      assert.equal(meta.isGit, true);
+      assert.ok(meta.gitDir);
+      assert.equal(meta.workingTreeState, 'unverified');
+      assert.equal(meta.branch, 'main');
+      assert.equal(meta.headCommit, fakeCommit);
+      assert.match(meta.headCommit, /^[0-9a-f]{40}$|^[0-9a-f]{64}$/i);
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    }
   });
 
   test('resolves loose ref from mock git repository', () => {

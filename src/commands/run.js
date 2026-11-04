@@ -2,7 +2,7 @@ import { MissingArgumentError } from '../errors.js';
 import { executeAndCapture } from '../capture.js';
 import { hasShellOperators } from '../parser.js';
 import { formatJson } from '../formatter.js';
-import { IncidentStatus } from '../storage/state.js';
+import { IncidentStatus, ProofTier, computeProofTier } from '../storage/state.js';
 import { sanitizeForDisplay } from '../sanitizer.js';
 import { CaptureService } from '../storage/service.js';
 import { Platform, EventType, CaptureOrigin } from '../events/model.js';
@@ -66,7 +66,16 @@ export async function runCommand({ context }) {
         const idText = s.bold(`#${savedRecord.id}`);
 
         const decision = ingestion.decision;
-        const isRegression = savedRecord.status === IncidentStatus.REGRESSED && savedRecord.regressionOf;
+        let isRegression = savedRecord.status === IncidentStatus.REGRESSED && savedRecord.regressionOf;
+        if (isRegression) {
+          const priorRecord = storage.getRecord(savedRecord.regressionOf);
+          const priorIsProven = priorRecord && Array.isArray(priorRecord.recoveryAttempts) && priorRecord.recoveryAttempts.some(
+            (a) => computeProofTier(a) === ProofTier.PROVEN
+          );
+          if (!priorIsProven) {
+            isRegression = false;
+          }
+        }
         const regBadge = isRegression ? ` ${s.red('(REGRESSION)')}` : '';
 
         if (decision.action === 'SURFACE') {

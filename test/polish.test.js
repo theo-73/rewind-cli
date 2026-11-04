@@ -171,7 +171,7 @@ describe('Product Polish & Visual Hierarchy (test/polish.test.js)', () => {
 
         // 4. Verify with #1
         const mockVerify = createMockIO({ cwd: tmpDir });
-        const codeVerify = await runCLI([rootFlag, 'verify', '#1'], mockVerify.io);
+        const codeVerify = await runCLI([rootFlag, 'verify', '#1', '--yes'], mockVerify.io);
         assert.equal(codeVerify, 0);
         assert.ok(mockVerify.getStdout().includes('RECOVERY VERIFIED'));
       } finally {

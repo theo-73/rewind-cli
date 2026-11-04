@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { computeFingerprint, inferFingerprintVersion } from './fingerprint.js';
 import { IncidentStatus, RecoveryAttemptStatus, ProvenanceType, EvidenceQuality } from './state.js';
 import { parseDiagnostic } from '../diagnostics/index.js';
+import { redactRecordForStorage } from '../sanitizer.js';
 
 const MAX_OUTPUT_HEAD = 64 * 1024; // 64 KB
 const MAX_OUTPUT_TAIL = 16 * 1024; // 16 KB
@@ -161,7 +162,7 @@ export function createRecord(id, captureResult, options = {}) {
     verification: null
   };
 
-  return Object.freeze(baseRecord);
+  return Object.freeze(redactRecordForStorage(baseRecord));
 }
 
 /**

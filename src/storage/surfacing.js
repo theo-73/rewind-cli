@@ -2,6 +2,7 @@ import { computeFingerprint } from './fingerprint.js';
 import { evaluateStaleness } from './staleness.js';
 import { extractNegativeMemory } from './negative_memory.js';
 import { analyzeEvidenceConflicts } from './contradiction.js';
+import { ProofTier, computeProofTier } from './state.js';
 
 /**
  * @typedef {object} RecoveryCandidate
@@ -152,6 +153,8 @@ export function evaluateSurfacing(currentRecord, storage) {
             ? new Date(latestVerificationTime).toISOString()
             : (attempt.createdAt || record.endTime || record.startTime);
 
+          const proofTier = computeProofTier(attempt);
+
           candidates.push({
             incidentId: record.id,
             attemptId: attempt.id,
@@ -159,6 +162,7 @@ export function evaluateSurfacing(currentRecord, storage) {
             change: attempt.change || null,
             verifyCmd: attempt.verifyCmd || null,
             status: attempt.status,
+            proofTier,
             isExternal: Boolean(attempt.isExternal),
             isLocallyVerified,
             evidenceQuality: attempt.evidenceQuality || 'DIRECT',
@@ -189,6 +193,7 @@ export function evaluateSurfacing(currentRecord, storage) {
         change: lastRec?.change || null,
         verifyCmd: lastRec?.verifyCmd || record.verification?.command || null,
         status: record.status,
+        proofTier: ProofTier.PROVEN,
         isExternal: Boolean(record.isExternal),
         isLocallyVerified: !record.isExternal,
         evidenceQuality: 'DIRECT',
@@ -202,17 +207,18 @@ export function evaluateSurfacing(currentRecord, storage) {
   }
 
   // Sort candidates by quality tier:
-  // Tier 1: Locally Verified & Compatible & Non-contradicted (best)
-  // Tier 2: Locally Verified & Compatible & Contradicted
-  // Tier 3: Locally Verified & Stale & Non-contradicted
-  // Tier 4: Locally Verified & Stale & Contradicted
-  // Tier 5: External Unverified
+  // Tier 1: Locally Verified & Proven & Compatible & Non-contradicted (best)
+  // Tier 2: Locally Verified & Claimed Pass
+  // Tier 3: Locally Verified & Stale
+  // Tier 4: External Unverified
   // Within tier: newest verified first
   candidates.sort((a, b) => {
-    const extA = a.isLocallyVerified ? 0 : 8;
-    const extB = b.isLocallyVerified ? 0 : 8;
-    const scoreA = extA + (a.isStale ? 2 : 0) + (a.isContradicted ? 1 : 0);
-    const scoreB = extB + (b.isStale ? 2 : 0) + (b.isContradicted ? 1 : 0);
+    const extA = a.isLocallyVerified ? 0 : 16;
+    const extB = b.isLocallyVerified ? 0 : 16;
+    const tierA = a.proofTier === ProofTier.PROVEN ? 0 : 8;
+    const tierB = b.proofTier === ProofTier.PROVEN ? 0 : 8;
+    const scoreA = extA + tierA + (a.isStale ? 2 : 0) + (a.isContradicted ? 1 : 0);
+    const scoreB = extB + tierB + (b.isStale ? 2 : 0) + (b.isContradicted ? 1 : 0);
     if (scoreA !== scoreB) {
       return scoreA - scoreB;
     }
@@ -236,6 +242,9 @@ export function evaluateSurfacing(currentRecord, storage) {
     if (!bestCandidate.isLocallyVerified) {
       action = 'CAUTION';
       reason = 'Historical fix available from external bundle (unverified locally)';
+    } else if (bestCandidate.proofTier === ProofTier.CLAIMED_PASS) {
+      action = 'CAUTION';
+      reason = 'Historical fix passed verification without recorded baseline failure (unproven)';
     } else if (!bestCandidate.isStale && !bestCandidate.isContradicted) {
       action = 'SURFACE';
       reason = 'Verified recovery with compatible environment';

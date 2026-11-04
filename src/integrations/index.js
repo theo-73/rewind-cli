@@ -86,8 +86,31 @@ export function installAllDetected(rootDir, options = {}) {
   const installed = [];
   const filesCreated = [];
 
-  // Default to installing Cursor integration if none specifically detected, as Cursor is the primary target
-  if (envs.cursor || envs.detected.length === 0) {
+  const targetAgent = options.agent ? String(options.agent).trim().toLowerCase() : null;
+
+  if (targetAgent) {
+    if (targetAgent === 'cursor') {
+      const res = installCursorIntegration(rootDir, options);
+      installed.push('Cursor');
+      filesCreated.push(...res.filesCreated);
+    } else if (targetAgent === 'gemini') {
+      const res = installGeminiIntegration(rootDir, options);
+      installed.push('Gemini');
+      filesCreated.push(...res.filesCreated);
+    } else if (targetAgent === 'codex') {
+      const res = installCodexIntegration(rootDir, options);
+      installed.push('Codex');
+      filesCreated.push(...res.filesCreated);
+    } else if (targetAgent === 'claude') {
+      const res = installClaudeIntegration(rootDir, options);
+      installed.push('Claude');
+      filesCreated.push(...res.filesCreated);
+    }
+    return { installed, filesCreated };
+  }
+
+  // Install integrations ONLY for detected agent environments (no silent fallback)
+  if (envs.cursor) {
     const res = installCursorIntegration(rootDir, options);
     installed.push('Cursor');
     filesCreated.push(...res.filesCreated);

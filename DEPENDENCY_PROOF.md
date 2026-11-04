@@ -55,6 +55,7 @@ Every single import in the codebase maps to:
 - `node:os`
 - `node:stream`
 - `node:readline`
+- `node:sqlite`
 - Relative files (`./*.js`, `../*.js`)
 
 ---
@@ -86,9 +87,9 @@ node --test
 
 **Expected Output:**
 ```text
-# tests 492
-# suites 110
-# pass 492
+# tests 497
+# suites 111
+# pass 497
 # fail 0
 # cancelled 0
 # skipped 0

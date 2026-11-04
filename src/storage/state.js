@@ -45,6 +45,47 @@ export const EvidenceQuality = Object.freeze({
   UNVERIFIED: 'UNVERIFIED'        // Fix proposed or marked FIXED without successful verification run
 });
 
+/**
+ * 5. Proof Tiers (Red-to-Green Empirical Verification Strength)
+ * Distinguishes genuine empirical fixes from tautological passes or unverified claims.
+ */
+export const ProofTier = Object.freeze({
+  PROVEN: 'PROVEN',             // Empirically verified: verified baseline failure (red) followed by pass (green)
+  CLAIMED_PASS: 'CLAIMED_PASS', // Passed verify command without recorded baseline failure (could be tautology)
+  UNPROVEN: 'UNPROVEN'          // Marked FIXED or PROPOSED without successful verification run
+});
+
+/**
+ * Computes the empirical proof tier for a recovery attempt based on its verification runs.
+ *
+ * @param {object} attempt
+ * @returns {string} ProofTier (PROVEN | CLAIMED_PASS | UNPROVEN)
+ */
+export function computeProofTier(attempt) {
+  if (!attempt || typeof attempt !== 'object') return ProofTier.UNPROVEN;
+  const runs = Array.isArray(attempt.verificationRuns) ? attempt.verificationRuns : [];
+  if (runs.length === 0) {
+    return ProofTier.UNPROVEN;
+  }
+
+  const hasPassed = runs.some((r) => r.result === 'PASSED' || r.exitCode === 0);
+  if (!hasPassed) {
+    return ProofTier.UNPROVEN;
+  }
+
+  // Check if a failure occurred prior to or as a baseline before a pass
+  const firstPassIndex = runs.findIndex((r) => r.result === 'PASSED' || r.exitCode === 0);
+  const hadPriorFailure = runs.slice(0, firstPassIndex).some(
+    (r) => r.result === 'FAILED' || (typeof r.exitCode === 'number' && r.exitCode !== 0)
+  );
+
+  if (hadPriorFailure || attempt.baselineFailed) {
+    return ProofTier.PROVEN;
+  }
+
+  return ProofTier.CLAIMED_PASS;
+}
+
 
 
 /**

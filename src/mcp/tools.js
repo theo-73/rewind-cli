@@ -231,9 +231,23 @@ export async function executeTool(toolName, args, storage) {
         if (args.limit !== undefined && typeof args.limit !== 'number') {
           throwParamError('"limit" must be a number');
         }
+        const maxLimit = Math.min(Math.max(1, typeof args.limit === 'number' ? args.limit : 5), 10);
         const listRes = storage?.listRecords ? await storage.listRecords() : { records: [] };
         const records = listRes.records || [];
-        result = searchRecords(args.query, records, { limit: args.limit });
+        const rawResults = searchRecords(args.query, records, { limit: maxLimit });
+        result = rawResults.map((item) => ({
+          ...item,
+          record: item.record ? {
+            id: item.record.id,
+            command: item.record.command,
+            fullCommand: item.record.fullCommand?.slice(0, 200),
+            status: item.record.status,
+            fingerprint: item.record.fingerprint,
+            normalizedError: item.record.normalizedError?.slice(0, 300),
+            stderr: item.record.stderr?.slice(0, 500),
+            recoveryAttemptsCount: item.record.recoveryAttempts?.length || 0
+          } : null
+        }));
         break;
       }
 
@@ -254,7 +268,8 @@ export async function executeTool(toolName, args, storage) {
           cause: args.cause,
           change: args.change,
           verifyCmd: args.verifyCmd,
-          status: 'PROPOSED'
+          status: 'PROPOSED',
+          source: 'mcp'
         });
         break;
       }
@@ -366,7 +381,6 @@ export async function executeTool(toolName, args, storage) {
           requiresApproval: true,
           execution: 'none',
           instruction: 'Execute this verification command via your host terminal or approval mechanism, then record the result using the CLI.',
-          cliCommand: `rewind verify ${record.id}`,
           safety: {
             mayAutoExecute: false,
             reason: 'Rewind cannot guarantee user-supplied verification commands are non-destructive. Host integrations own execution approval.'

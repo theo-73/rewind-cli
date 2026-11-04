@@ -8,7 +8,7 @@ export async function completionsCommand({ context }) {
     throw new CliError('Missing shell argument. Supported shells: bash, zsh, powershell, fish');
   }
 
-  const commands = 'run history show recover triage verify search patterns context doctor verify-integrity rebuild hook export-shared import-shared mcp help version init stats completions clear setup event';
+  const commands = 'run history show recover triage verify search patterns context doctor verify-integrity rebuild hook export-shared import-shared mcp help version init stats completions clear setup event scrub';
   const globalFlags = '--help --version --json --no-color --limit --offset --root';
 
   if (shell === 'bash') {
@@ -82,6 +82,7 @@ _rewind() {
     'clear:Clear data'
     'setup:Configure AI agent integrations'
     'event:Ingest external agent events'
+    'scrub:Scrub secrets and re-seal journal'
   )
 
   local -a global_flags
@@ -138,7 +139,7 @@ compdef _rewind rewind
 $scriptblock = {
     param($wordToComplete, $commandAst, $cursorPosition)
 
-    $commands = @('run', 'history', 'show', 'recover', 'triage', 'verify', 'search', 'patterns', 'context', 'doctor', 'verify-integrity', 'rebuild', 'hook', 'export-shared', 'import-shared', 'mcp', 'help', 'version', 'init', 'stats', 'completions', 'clear', 'setup', 'event')
+    $commands = @('run', 'history', 'show', 'recover', 'triage', 'verify', 'search', 'patterns', 'context', 'doctor', 'verify-integrity', 'rebuild', 'hook', 'export-shared', 'import-shared', 'mcp', 'help', 'version', 'init', 'stats', 'completions', 'clear', 'setup', 'event', 'scrub')
     $globalFlags = @('--help', '--version', '--json', '--no-color', '--limit', '--offset', '--root')
 
     $astElements = $commandAst.CommandElements
@@ -214,6 +215,7 @@ complete -c rewind -n "not __fish_seen_subcommand_from $commands" -a "completion
 complete -c rewind -n "not __fish_seen_subcommand_from $commands" -a "clear" -d "Clear data"
 complete -c rewind -n "not __fish_seen_subcommand_from $commands" -a "setup" -d "Configure AI agent integrations"
 complete -c rewind -n "not __fish_seen_subcommand_from $commands" -a "event" -d "Ingest external agent events"
+complete -c rewind -n "not __fish_seen_subcommand_from $commands" -a "scrub" -d "Scrub secrets and re-seal journal"
 
 # Dynamic completions for show, recover, verify
 complete -c rewind -n "__fish_seen_subcommand_from show recover verify" -a "(rewind history --json 2>/dev/null | grep -o '\\\"id\\\":[ ]*\\\"[^\\\"]*\\\"' | cut -d'\\\"' -f4 2>/dev/null)"

@@ -76,7 +76,8 @@ describe('Gemini CLI Integration & Bridge (src/integrations/gemini.js)', () => {
       storage.addRecoveryAttempt(inc.id, {
         cause: 'Expired mock JWT secret in test fixture',
         change: 'Updated JWT_SECRET to valid constant in conftest.py',
-        verifyCmd: 'pytest tests/test_auth.py'
+        verifyCmd: 'pytest tests/test_auth.py',
+        baselineFailed: true
       });
 
       storage.recordVerificationRun(inc.id, 1, {

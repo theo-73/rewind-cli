@@ -10,7 +10,7 @@ import { isValidRecord } from './record.js';
 import { redactSecrets } from '../sanitizer.js';
 import { IncidentStatus, RecoveryAttemptStatus } from './state.js';
 
-export const SUPPORTED_NODE_RANGE = '>=22.5.0';
+export const SUPPORTED_NODE_RANGE = '>=22.13.0';
 
 /**
  * Formats byte size into human-readable representation.
@@ -396,7 +396,7 @@ export function runDoctorDiagnostics(ledgerDir, config = {}, options = {}) {
   const versionMatch = currentVersion.match(/^v(\d+)\.(\d+)/);
   const majorVersion = versionMatch ? Number.parseInt(versionMatch[1], 10) : 0;
   const minorVersion = versionMatch ? Number.parseInt(versionMatch[2], 10) : 0;
-  const runtimeSupported = majorVersion > 22 || (majorVersion === 22 && minorVersion >= 5);
+  const runtimeSupported = majorVersion > 22 || (majorVersion === 22 && minorVersion >= 13);
 
   healthChecks.push({
     id: 'runtime_compatibility',
@@ -734,6 +734,39 @@ export function runDoctorDiagnostics(ledgerDir, config = {}, options = {}) {
   });
   if (!writeProbePass) {
     errors.push(`Ledger write probe failed: ${writeProbe.error}`);
+  }
+
+  // ==========================================
+  // 14. Unredacted Secrets Check
+  // ==========================================
+  let unredactedSecretsFound = false;
+  if (fs.existsSync(journalPath)) {
+    try {
+      const journalContent = fs.readFileSync(journalPath, 'utf8');
+      const lines = journalContent.split('\n').filter(Boolean);
+      for (const line of lines) {
+        if (redactSecrets(line) !== line) {
+          unredactedSecretsFound = true;
+          break;
+        }
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  healthChecks.push({
+    id: 'unredacted_secrets',
+    name: 'Historical Secrets Hygiene',
+    status: unredactedSecretsFound ? 'WARN' : 'PASS',
+    severity: unredactedSecretsFound ? 'warn' : 'info',
+    message: unredactedSecretsFound
+      ? 'Unredacted secrets detected in historical journal. Run "rewind scrub" to sanitize and re-seal.'
+      : 'No unredacted secret patterns detected in ledger journal',
+    details: { unredactedSecretsFound }
+  });
+  if (unredactedSecretsFound) {
+    warnings.push('Unredacted secrets detected in historical journal; run "rewind scrub" to re-seal.');
   }
 
   // ==========================================

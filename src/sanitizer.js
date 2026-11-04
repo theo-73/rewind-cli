@@ -90,3 +90,175 @@ export function sanitizeOutput(str) {
 export function sanitizeForDisplay(str) {
   return redactSecrets(sanitizeOutput(str));
 }
+
+/**
+ * Flag-aware argument redactor for command line argument arrays.
+ * Redacts secrets in flag=value formats and values immediately following sensitive flags.
+ *
+ * @param {string[]} args
+ * @returns {string[]}
+ */
+export function redactCommandArgs(args) {
+  if (!Array.isArray(args)) return [];
+  const sensitiveFlags = new Set([
+    '--token',
+    '--password',
+    '--passwd',
+    '--secret',
+    '--api-key',
+    '--apikey',
+    '--api_key',
+    '--auth-token',
+    '--access-token',
+    '--client-secret',
+    '--private-key',
+    '-p'
+  ]);
+
+  const result = [];
+  for (let i = 0; i < args.length; i++) {
+    const raw = args[i];
+    if (typeof raw !== 'string') {
+      result.push(raw);
+      continue;
+    }
+    const arg = raw;
+
+    // Check if previous argument was a sensitive flag expecting a value
+    if (i > 0) {
+      const prev = String(args[i - 1]).toLowerCase();
+      if (sensitiveFlags.has(prev) && !arg.startsWith('-')) {
+        result.push('[REDACTED]');
+        continue;
+      }
+    }
+
+    // Check for flag=value syntax (e.g. --token=secret or --password=secret)
+    const eqIdx = arg.indexOf('=');
+    if (eqIdx !== -1) {
+      const flagPart = arg.slice(0, eqIdx).toLowerCase();
+      if (sensitiveFlags.has(flagPart) || /password|secret|token|api[_-]?key/i.test(flagPart)) {
+        result.push(`${arg.slice(0, eqIdx)}=[REDACTED]`);
+        continue;
+      }
+    }
+
+    // Check for attached short flag e.g. -pSECRET
+    if (arg.startsWith('-p') && arg.length > 2 && !arg.startsWith('-p=')) {
+      result.push('-p[REDACTED]');
+      continue;
+    }
+
+    // Apply standard pattern redaction to individual token
+    result.push(redactSecrets(arg));
+  }
+  return result;
+}
+
+/**
+ * Flag-aware command string redactor for full command lines.
+ *
+ * @param {string} cmdStr
+ * @returns {string}
+ */
+export function redactCommandString(cmdStr) {
+  if (!cmdStr || typeof cmdStr !== 'string') return '';
+  let result = redactSecrets(cmdStr);
+
+  // Redact key=value or key:value forms for sensitive flags
+  result = result.replace(
+    /(--?(?:token|password|passwd|secret|api[_-]?key|auth[_-]?token|access[_-]?token|client[_-]?secret)\s*[:=]\s*)(?:(['"])(.*?)\2|([^\s'"]+))/gi,
+    '$1[REDACTED]'
+  );
+
+  // Redact space-separated flag values
+  result = result.replace(
+    /(\s+(?:--token|--password|--passwd|--secret|--api-key|--apikey|--api_key|--auth-token|--access-token|--client-secret|-p)\s+)(?:(['"])(.*?)\2|([^\s\-\\/][^\s]*))/gi,
+    '$1[REDACTED]'
+  );
+
+  return result;
+}
+
+/**
+ * Redacts an execution/incident record completely before persistence to journal or SQLite.
+ * Ensures command, args, fullCommand, stdout, and stderr are never stored with raw secrets.
+ *
+ * @param {object} record
+ * @returns {object}
+ */
+export function redactRecordForStorage(record) {
+  if (!record || typeof record !== 'object') return record;
+  const command = record.command ? redactSecrets(record.command) : '';
+  const args = redactCommandArgs(record.args || []);
+  let fullCommand = record.fullCommand ? redactCommandString(record.fullCommand) : '';
+  if (!fullCommand && (command || args.length > 0)) {
+    fullCommand = [command, ...args].filter(Boolean).join(' ');
+  }
+
+  const rawStdout = record.stdoutRaw || record.stdout || '';
+  const rawStderr = record.stderrRaw || record.stderr || '';
+
+  return {
+    ...record,
+    command,
+    args,
+    fullCommand,
+    stdout: redactSecrets(record.stdout || ''),
+    stderr: redactSecrets(record.stderr || ''),
+    stdoutRaw: redactSecrets(rawStdout),
+    stderrRaw: redactSecrets(rawStderr)
+  };
+}
+
+/**
+ * Redacts secrets from an MCP tool execution result.
+ *
+ * @param {object} toolResult
+ * @returns {object}
+ */
+export function redactMcpResult(toolResult) {
+  if (!toolResult || typeof toolResult !== 'object') return toolResult;
+  if (Array.isArray(toolResult.content)) {
+    return {
+      ...toolResult,
+      content: toolResult.content.map((item) => {
+        if (item && item.type === 'text' && typeof item.text === 'string') {
+          return { ...item, text: redactSecrets(item.text) };
+        }
+        return item;
+      })
+    };
+  }
+  return toolResult;
+}
+
+/**
+ * Checks whether a verification command is trivial (e.g., "true", "exit 0", ":").
+ * Trivial commands do not prove a fix and must be rejected.
+ *
+ * @param {string} cmd
+ * @returns {boolean}
+ */
+export function isTrivialVerifyCommand(cmd) {
+  if (!cmd || typeof cmd !== 'string') return true;
+  const normalized = cmd.trim().toLowerCase().replace(/^["']|["']$/g, '').trim();
+  const trivialCommands = new Set([
+    'true',
+    ':',
+    'exit 0',
+    'exit',
+    'false',
+    '/bin/true',
+    '/usr/bin/true',
+    'return 0',
+    'echo ok',
+    'echo pass',
+    'cmd /c exit 0',
+    'cmd.exe /c exit 0'
+  ]);
+  if (trivialCommands.has(normalized)) return true;
+  if (/^(?:exit\s+0|cmd(?:\.exe)?\s+\/c\s+exit\s+0)$/i.test(normalized)) return true;
+  return false;
+}
+

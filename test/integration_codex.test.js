@@ -80,7 +80,8 @@ describe('Codex Integration & Bridge (src/integrations/codex.js)', () => {
       storage.addRecoveryAttempt(inc.id, {
         cause: 'Missing use crate::config import',
         change: 'Added use crate::config; at top of main.rs',
-        verifyCmd: 'cargo test'
+        verifyCmd: 'cargo test',
+        baselineFailed: true
       });
 
       storage.recordVerificationRun(inc.id, 1, {

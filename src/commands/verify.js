@@ -1,3 +1,4 @@
+import readline from 'node:readline';
 import { MissingArgumentError, CliError, UsageError } from '../errors.js';
 import { IncidentStatus } from '../storage/state.js';
 import { executeAndCapture } from '../capture.js';
@@ -20,7 +21,7 @@ import { readGitMetadata } from '../git.js';
  * @returns {Promise<number>} - 0 if verified, non-zero if verification command failed
  */
 export async function verifyCommand({ context }) {
-  const { parsedArgs, config, storage, env, stdout, stderr, styler } = context;
+  const { parsedArgs, config, storage, env, stdout, stderr, stdin, isTTY, styler } = context;
   const rawId = parsedArgs.positional[0];
 
   if (!rawId) {
@@ -70,6 +71,32 @@ export async function verifyCommand({ context }) {
 
   const isJsonMode = Boolean(parsedArgs.flags.json);
 
+  const hasYes = Boolean(parsedArgs.flags.yes || parsedArgs.flags.y || parsedArgs.flags.force);
+  if (!hasYes) {
+    if (!isTTY) {
+      throw new CliError('Confirmation required to execute verification command in non-interactive sessions. Re-run with --yes (-y).', {
+        code: 'ERR_CONFIRMATION_REQUIRED',
+        exitCode: 1
+      });
+    }
+
+    if (targetAttempt.source === 'mcp') {
+      stdout.write(`\n  ${styler.yellow('⚠ WARNING: This verification command was suggested by an AI agent.')}\n`);
+    }
+
+    stdout.write(`\n  Verification Command:\n    ${styler.bold(styler.cyan('$ ' + sanitizeForDisplay(verifyCmd)))}\n\n`);
+    const rl = readline.createInterface({ input: stdin, output: stdout });
+    const answer = await new Promise((resolve) => {
+      rl.question('  Run this command to verify? [y/N]: ', resolve);
+    });
+    rl.close();
+
+    if (!answer || (answer.trim().toLowerCase() !== 'y' && answer.trim().toLowerCase() !== 'yes')) {
+      stdout.write(`\n  ${styler.dim('Verification aborted by user.')}\n\n`);
+      return 1;
+    }
+  }
+
   if (!isJsonMode) {
     const tag = styler.badge('rewind:verify', styler.cyan);
     stdout.write(`\n${tag} Executing user-approved verification command for Incident #${id} [Attempt #${targetAttempt.id}]:\n`);
@@ -80,7 +107,8 @@ export async function verifyCommand({ context }) {
   const stdoutStream = isJsonMode ? null : stdout;
   const stderrStream = isJsonMode ? null : stderr;
 
-  const isShellCommand = Boolean(parsedArgs.flags.shell) || hasShellOperators(verifyCmd);
+  // Never infer shell execution — require explicit --shell flag
+  const isShellCommand = Boolean(parsedArgs.flags.shell);
   const commandTokens = isShellCommand ? [verifyCmd] : tokenizeCommandLine(verifyCmd);
 
   const timeoutMs = typeof parsedArgs.flags.timeout === 'number' && parsedArgs.flags.timeout > 0

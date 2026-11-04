@@ -55,7 +55,8 @@ describe('Surfacing Engine & Abstention Policy (src/storage/surfacing.js)', () =
       storage.addRecoveryAttempt(inc1.id, {
         cause: 'Postgres not running',
         change: 'Started local postgres service',
-        verifyCmd: 'node -e "process.exit(0);"'
+        verifyCmd: 'node -e "process.exit(0);"',
+        baselineFailed: true
       });
 
       storage.recordVerificationRun(inc1.id, 1, {
@@ -119,7 +120,8 @@ describe('Surfacing Engine & Abstention Policy (src/storage/surfacing.js)', () =
       storage.addRecoveryAttempt(inc1.id, {
         cause: 'Node 20 fetch polyfill missing',
         change: 'Added node-fetch require',
-        verifyCmd: 'node -e "process.exit(0);"'
+        verifyCmd: 'node -e "process.exit(0);"',
+        baselineFailed: true
       });
 
       storage.recordVerificationRun(inc1.id, 1, {
@@ -180,7 +182,8 @@ describe('Surfacing Engine & Abstention Policy (src/storage/surfacing.js)', () =
       storage.addRecoveryAttempt(inc1.id, {
         cause: 'Missing requests on linux',
         change: 'pip install requests (linux)',
-        verifyCmd: 'python -c "import requests"'
+        verifyCmd: 'python -c "import requests"',
+        baselineFailed: true
       });
       storage.recordVerificationRun(inc1.id, 1, {
         command: 'python -c "import requests"',
@@ -208,7 +211,8 @@ describe('Surfacing Engine & Abstention Policy (src/storage/surfacing.js)', () =
       storage.addRecoveryAttempt(inc2.id, {
         cause: 'Missing requests on windows',
         change: 'py -m pip install requests',
-        verifyCmd: 'python -c "import requests"'
+        verifyCmd: 'python -c "import requests"',
+        baselineFailed: true
       });
       storage.recordVerificationRun(inc2.id, 1, {
         command: 'python -c "import requests"',
@@ -334,6 +338,7 @@ describe('Surfacing Engine & Abstention Policy (src/storage/surfacing.js)', () =
         change: 'Added foo = "1.0" to Cargo.toml',
         verifyCmd: 'cargo check',
         isExternal: true,
+        baselineFailed: true,
         evidenceQuality: 'EXTERNAL_VERIFIED'
       });
 

@@ -96,7 +96,7 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
       assert.equal(inc1Suspected.recoveryAttempts.length, 1);
       assert.equal(inc1Suspected.recoveryAttempts[0].cause, 'Token validation failed');
 
-      // Step 3: Record change and explicit verification command -> transitions to FIXED/OPEN
+      // Step 3: Record change and explicit verification command with proven baseline failure
       const mock3 = createMockIO({ cwd: tmpDir });
       const code3 = await runCLI([
         rootFlag,
@@ -105,7 +105,8 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
         '--change',
         'Added missing token check',
         '--verify-cmd',
-        `"${process.execPath}" -e "process.exit(0);"`
+        `"${process.execPath}" -e "process.exit(0);"`,
+        '--baseline-failed'
       ], mock3.io);
       assert.equal(code3, 0);
 
@@ -115,9 +116,9 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
       assert.equal(inc1Fixed.recoveryAttempts.length, 2);
       assert.equal(inc1Fixed.recoveryAttempts[1].change, 'Added missing token check');
 
-      // Step 4: Execute rewind verify 1 -> transitions to VERIFIED/RECOVERED
+      // Step 4: Execute rewind verify 1 -> transitions to VERIFIED/RECOVERED with red-to-green proof
       const mock4 = createMockIO({ cwd: tmpDir });
-      const code4 = await runCLI([rootFlag, 'verify', '1'], mock4.io);
+      const code4 = await runCLI([rootFlag, 'verify', '1', '--yes'], mock4.io);
       assert.equal(code4, 0);
 
       store.rebuildIndex();
@@ -169,7 +170,7 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
 
       // 3. Attempt verification
       const mock3 = createMockIO({ cwd: tmpDir });
-      const verifyExitCode = await runCLI([rootFlag, 'verify', '1'], mock3.io);
+      const verifyExitCode = await runCLI([rootFlag, 'verify', '1', '--yes'], mock3.io);
 
       assert.equal(verifyExitCode, 44);
       assert.ok(mock3.getStderr().includes('NOT VERIFIED'));
@@ -219,12 +220,12 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
       await runCLI([rootFlag, 'recover', '1', '--change', 'fix', '--verify-cmd', `"${process.execPath}" -e "process.exit(0);"`], mock2.io);
 
       const mock3 = createMockIO({ cwd: tmpDir });
-      const code3 = await runCLI([rootFlag, 'verify', '1'], mock3.io);
+      const code3 = await runCLI([rootFlag, 'verify', '1', '--yes'], mock3.io);
       assert.equal(code3, 0);
 
       // Try verify again
       const mock4 = createMockIO({ cwd: tmpDir });
-      const code4 = await runCLI([rootFlag, 'verify', '1'], mock4.io);
+      const code4 = await runCLI([rootFlag, 'verify', '1', '--yes'], mock4.io);
       assert.equal(code4, 0);
       assert.ok(mock4.getStdout().includes('is already verified and sealed'));
     } finally {
@@ -251,7 +252,7 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
       ], mock2.io);
 
       const mock3 = createMockIO({ cwd: tmpDir });
-      const code3 = await runCLI([rootFlag, 'verify', '1'], mock3.io);
+      const code3 = await runCLI([rootFlag, 'verify', '1', '--shell', '--yes'], mock3.io);
       assert.equal(code3, 0);
       assert.ok(mock3.getStdout().includes('RECOVERY VERIFIED'));
     } finally {
@@ -280,7 +281,7 @@ describe('Trust Loop State Machine & Verification (src/storage/state.js)', () =>
 
       // Verify with a 200ms timeout
       const mock3 = createMockIO({ cwd: tmpDir });
-      const code3 = await runCLI([rootFlag, 'verify', '1', '--timeout', '200'], mock3.io);
+      const code3 = await runCLI([rootFlag, 'verify', '1', '--timeout', '200', '--yes'], mock3.io);
       assert.notEqual(code3, 0);
       assert.ok(mock3.getStderr().includes('TIMED OUT') || mock3.getStderr().includes('timed out'));
     } finally {

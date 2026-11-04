@@ -78,6 +78,7 @@ describe('Agent Integrations & Guided Setup (src/integrations/ & src/commands/se
       const exitCode = await runCLI([
         '--root', tmpDir,
         'setup',
+        '--agent', 'cursor',
         '--dry-run'
       ], {
         ...io,
@@ -102,6 +103,7 @@ describe('Agent Integrations & Guided Setup (src/integrations/ & src/commands/se
       const exitCode = await runCLI([
         '--root', tmpDir,
         'setup',
+        '--agent', 'cursor',
         '--json'
       ], {
         ...io,
@@ -131,6 +133,7 @@ describe('Agent Integrations & Guided Setup (src/integrations/ & src/commands/se
       const exitCode = await runCLI([
         '--root', tmpDir,
         'setup',
+        '--agent', 'cursor',
         '--dry-run'
       ], {
         ...io,
@@ -151,6 +154,7 @@ describe('Agent Integrations & Guided Setup (src/integrations/ & src/commands/se
       const exitCode = await runCLI([
         '--root', tmpDir,
         'setup',
+        '--agent', 'cursor',
         '--yes'
       ], {
         ...io,
@@ -160,6 +164,26 @@ describe('Agent Integrations & Guided Setup (src/integrations/ & src/commands/se
       assert.equal(exitCode, 0);
       assert.ok(io.getStdout().includes('Setup complete!'));
       assert.ok(fs.existsSync(path.join(tmpDir, '.cursor', 'hooks.json')));
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    }
+  });
+
+  test('rewind setup rejects when no agent is detected and no --agent is specified', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-setup-none-'));
+    try {
+      const io = createMockIO();
+      const exitCode = await runCLI([
+        '--root', tmpDir,
+        'setup',
+        '--yes'
+      ], {
+        ...io,
+        isTTY: false
+      });
+
+      assert.notEqual(exitCode, 0);
+      assert.ok(io.getStderr().includes('No coding agent detected'));
     } finally {
       try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
     }

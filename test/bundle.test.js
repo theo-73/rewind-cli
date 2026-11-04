@@ -398,7 +398,7 @@ describe('Project-Level Shared Recovery Bundles (test/bundle.test.js)', () => {
 
       // 2. Run local verification via rewind verify 1
       const { stdin, stdout, stderr } = createMockIO();
-      const exitCode = await runCLI(['verify', '1', '--root', tempDir], {
+      const exitCode = await runCLI(['verify', '1', '--root', tempDir, '--yes'], {
         stdin,
         stdout,
         stderr,

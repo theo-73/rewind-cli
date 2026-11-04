@@ -1,4 +1,4 @@
-import { redactSecrets, sanitizeForDisplay } from '../../sanitizer.js';
+import { redactSecrets, redactCommandArgs, redactCommandString, sanitizeForDisplay } from '../../sanitizer.js';
 import { parseDiagnostic } from '../../diagnostics/index.js';
 import { captureSafeEnvironment } from '../../environment.js';
 import { readGitMetadata } from '../../git.js';
@@ -36,9 +36,9 @@ export function normalizeGeminiPayload(data = {}, contextOptions = {}) {
   const durationMs = typeof data.duration_ms === 'number' && data.duration_ms >= 0 ? data.duration_ms : 0;
 
   const tokens = tokenizeCommandLine(rawCmd);
-  const command = tokens[0] || rawCmd;
-  const args = tokens.slice(1);
-  const fullCommand = redactSecrets(rawCmd);
+  const command = tokens[0] ? redactSecrets(tokens[0]) : redactSecrets(rawCmd);
+  const args = redactCommandArgs(tokens.slice(1));
+  const fullCommand = redactCommandString(rawCmd);
 
   const env = captureSafeEnvironment(process.env);
   const git = readGitMetadata(cwd);

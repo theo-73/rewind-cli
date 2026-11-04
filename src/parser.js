@@ -364,6 +364,12 @@ export function parseArgs(rawArgs = []) {
     } else if (arg === '--fixed') {
       flags.fixed = true;
       i++;
+    } else if (arg === '--baseline') {
+      flags.baseline = true;
+      i++;
+    } else if (arg === '--baseline-failed') {
+      flags.baselineFailed = true;
+      i++;
     } else if (arg === '--cmd') {
       i++;
       if (i >= rawArgs.length || rawArgs[i].startsWith('-')) {
@@ -507,6 +513,20 @@ export function parseArgs(rawArgs = []) {
         throw new InvalidArgumentError('Option "--event" requires an event type value.');
       }
       flags.event = val;
+      i++;
+    } else if (arg === '--agent' || arg === '-a') {
+      i++;
+      if (i >= rawArgs.length || rawArgs[i].startsWith('-')) {
+        throw new InvalidArgumentError('Option "--agent" requires an agent name (cursor, gemini, codex, claude).');
+      }
+      flags.agent = rawArgs[i];
+      i++;
+    } else if (arg.startsWith('--agent=')) {
+      const val = arg.slice('--agent='.length);
+      if (!val) {
+        throw new InvalidArgumentError('Option "--agent" requires an agent name (cursor, gemini, codex, claude).');
+      }
+      flags.agent = val;
       i++;
     } else if (arg === '--profile') {
       i++;

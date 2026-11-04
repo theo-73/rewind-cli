@@ -1,42 +1,20 @@
-import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { MissingArgumentError, CliError, UsageError } from '../errors.js';
 import { IncidentStatus, ProvenanceType, assertValidIncidentTransition } from '../storage/state.js';
 import { formatJson, formatStatusBadge } from '../formatter.js';
-import { sanitizeForDisplay } from '../sanitizer.js';
+import { sanitizeForDisplay, isTrivialVerifyCommand } from '../sanitizer.js';
 import { normalizeId } from '../storage/store.js';
+import { executeAndCapture } from '../capture.js';
+import { tokenizeCommandLine } from '../parser.js';
 
 /**
- * Safely inspects local workspace for non-secret modified files without external dependencies.
+ * Safely inspects local workspace without invoking external git binaries.
+ * Adheres strictly to the zero-git-binary invariant.
  *
  * @param {string} rootDir
  * @returns {object|null}
  */
 function observeLocalChanges(rootDir) {
-  try {
-    const out = execFileSync('git', ['status', '--porcelain'], {
-      cwd: rootDir,
-      timeout: 2000,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore']
-    });
-    const files = out
-      .split(/\r?\n/)
-      .map(line => line.trim())
-      .filter(Boolean)
-      .map(line => line.slice(3).trim())
-      .filter(f => !path.basename(f).startsWith('.env') && !f.endsWith('.key') && !f.endsWith('.pem') && !f.includes('id_rsa'));
-
-    if (files.length > 0) {
-      return {
-        files: files.slice(0, 10),
-        count: files.length,
-        provenance: ProvenanceType.AUTOMATICALLY_OBSERVED
-      };
-    }
-  } catch {
-    // Non-fatal: git not installed or not in a git working tree
-  }
   return null;
 }
 
@@ -74,8 +52,48 @@ export async function recoverCommand({ context }) {
 
   const cause = parsedArgs.flags.cause;
   const change = parsedArgs.flags.change;
-  const verifyCmd = parsedArgs.flags.verifyCmd;
+  const rawVerifyCmd = parsedArgs.flags.verifyCmd;
   const isFixed = Boolean(parsedArgs.flags.fixed);
+  const baselineFailedFlag = Boolean(parsedArgs.flags.baselineFailed || parsedArgs.flags['baseline-failed']);
+
+  let verifyCmd = rawVerifyCmd;
+  if (verifyCmd) {
+    const vCmd = String(verifyCmd).trim();
+    if (vCmd.length > 500) {
+      throw new UsageError('Verification command exceeds maximum allowed length of 500 characters.');
+    }
+    if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(vCmd)) {
+      throw new UsageError('Verification command contains invalid control characters.');
+    }
+    if (isTrivialVerifyCommand(vCmd)) {
+      throw new UsageError(`Verification command "${vCmd}" is trivial (e.g. "true", "exit 0") and cannot prove a recovery.`);
+    }
+    verifyCmd = vCmd;
+  }
+
+  let baselineFailed = baselineFailedFlag;
+  if (verifyCmd && parsedArgs.flags.baseline) {
+    const isShellCommand = Boolean(parsedArgs.flags.shell);
+    const commandTokens = isShellCommand ? [verifyCmd] : tokenizeCommandLine(verifyCmd);
+    const baselineResult = await executeAndCapture(commandTokens, {
+      cwd: config.rootDir || process.cwd(),
+      env,
+      shell: isShellCommand,
+      timeout: 30000
+    });
+    const didFail = (baselineResult.exitCode !== 0 || !baselineResult.success);
+    if (didFail) {
+      baselineFailed = true;
+      if (!parsedArgs.flags.json) {
+        stdout.write(`  ${styler.green('✓')} Baseline failure verified (exit code ${baselineResult.exitCode}). Red-to-green proof established.\n`);
+      }
+    } else {
+      baselineFailed = false;
+      if (!parsedArgs.flags.json) {
+        stdout.write(`  ${styler.yellow('⚠ WARNING: Baseline verification command succeeded (exit code 0). Fix cannot be proven red-to-green.')}\n`);
+      }
+    }
+  }
 
   if (!cause && !change && !verifyCmd && !isFixed) {
     throw new UsageError(
@@ -99,7 +117,8 @@ export async function recoverCommand({ context }) {
     change,
     verifyCmd,
     isFixed,
-    observedChanges
+    observedChanges,
+    baselineFailed
   });
 
   const latestAttempt = updated.recoveryAttempts[updated.recoveryAttempts.length - 1];

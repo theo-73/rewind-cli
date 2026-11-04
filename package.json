@@ -32,7 +32,9 @@
     "build": "node scripts/update-proofs.js && node scripts/build.js",
     "update-proofs": "node scripts/update-proofs.js",
     "verify:build": "node --test test/build.test.js",
-    "check": "node --check bin/rewind.js"
+    "check": "node --check bin/rewind.js",
+    "lint": "node --check bin/rewind.js scripts/build.js scripts/update-proofs.js",
+    "prepack": "npm run build && npm test"
   },
   "repository": {
     "type": "git",
@@ -43,7 +45,7 @@
   },
   "homepage": "https://github.com/Tejas3479/rewind-cli#readme",
   "engines": {
-    "node": ">=22.5.0"
+    "node": ">=22.13.0"
   },
   "keywords": [
     "cli",

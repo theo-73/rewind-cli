@@ -120,7 +120,8 @@ describe('Agent Event Gateway (src/events/gateway.js & src/commands/event.js)', 
       storage.addRecoveryAttempt(inc.id, {
         cause: 'Wrong database port in .env',
         change: 'Changed port to 5432 in .env.local',
-        verifyCmd: 'node -e "process.exit(0);"'
+        verifyCmd: 'node -e "process.exit(0);"',
+        baselineFailed: true
       });
       storage.recordVerificationRun(inc.id, 1, {
         command: 'node -e "process.exit(0);"',

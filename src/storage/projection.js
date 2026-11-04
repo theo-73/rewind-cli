@@ -132,6 +132,8 @@ export function applyEventToRecordMap(incidents, event) {
         isExternal: Boolean(payload.isExternal),
         externalVerification: payload.externalVerification || null,
         evidenceQuality: quality,
+        source: payload.source || 'cli',
+        baselineFailed: Boolean(payload.baselineFailed),
         verificationRuns: []
       };
 

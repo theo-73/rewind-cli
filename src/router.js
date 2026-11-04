@@ -23,6 +23,7 @@ import { completionsCommand } from './commands/completions.js';
 import { mcpCommand } from './commands/mcp.js';
 import { eventCommand } from './commands/event.js';
 import { setupCommand } from './commands/setup.js';
+import { scrubCommand } from './commands/scrub.js';
 
 export const COMMANDS = Object.freeze({
   run: runCommand,
@@ -52,6 +53,7 @@ export const COMMANDS = Object.freeze({
   mcp: mcpCommand,
   event: eventCommand,
   setup: setupCommand,
+  scrub: scrubCommand,
   help: helpCommand,
   version: versionCommand
 });

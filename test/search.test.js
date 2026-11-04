@@ -186,7 +186,7 @@ describe('Conservative Near-Match Search (src/storage/search.js)', () => {
       ], mockRec.io);
 
       const mockVer = createMockIO({ cwd: tmpDir });
-      await runCLI([rootFlag, 'verify', '1'], mockVer.io);
+      await runCLI([rootFlag, 'verify', '1', '--yes'], mockVer.io);
 
       // 3. Search in text mode
       const mockSearchText = createMockIO({ cwd: tmpDir });
@@ -241,7 +241,7 @@ describe('Conservative Near-Match Search (src/storage/search.js)', () => {
       ], mockRec.io);
 
       const mockVer = createMockIO({ cwd: tmpDir });
-      await runCLI([rootFlag, 'verify', '1'], mockVer.io);
+      await runCLI([rootFlag, 'verify', '1', '--yes'], mockVer.io);
 
       // 3. Search using keywords from the applied fix (which are not in the error output)
       const mockSearchFix = createMockIO({ cwd: tmpDir });

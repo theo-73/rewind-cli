@@ -331,7 +331,7 @@ test('MCP Server Tests', async (t) => {
     assert.equal(parsed.requiresApproval, true);
     assert.equal(parsed.execution, 'none');
     assert.ok(parsed.verifyCmd);
-    assert.ok(parsed.cliCommand);
+    assert.equal(parsed.cliCommand, undefined);
     assert.equal(parsed.safety.mayAutoExecute, false);
   });
 

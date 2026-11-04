@@ -304,6 +304,20 @@ const COMMAND_DOCS = {
       'rewind doctor --repair --dry-run',
       'rewind doctor --json'
     ]
+  },
+  scrub: {
+    usage: 'rewind scrub [--yes] [options]',
+    description: 'Redact raw secrets from historical journal and re-seal cryptographic hash chain.',
+    arguments: [],
+    options: [
+      { flag: '--yes, -y', description: 'Confirm scrub without interactive prompt' },
+      { flag: '--json', description: 'Output result in JSON format' },
+      { flag: '--root <path>', description: 'Explicit project root / ledger directory' }
+    ],
+    examples: [
+      'rewind scrub',
+      'rewind scrub --yes'
+    ]
   }
 };
 
@@ -337,6 +351,7 @@ export function formatTopLevelHelp(s) {
     `  13. ${s.cyan('rewind doctor')}                   Run installation and ledger self-diagnostics`,
     `  14. ${s.cyan('rewind verify-integrity')}        Audit cryptographic hash chain and checkpoint integrity`,
     `  15. ${s.cyan('rewind rebuild')}                 Reconstruct derived incident views from immutable journal`,
+    `  16. ${s.cyan('rewind scrub')}                   Redact raw secrets from journal and re-seal hash chain`,
     '',
     `${s.bold('GLOBAL OPTIONS:')}`,
     `  ${s.yellow('-h, --help')}                        Show help information`,

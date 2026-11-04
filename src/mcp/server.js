@@ -4,6 +4,7 @@ import { parseMessage, createResponse, createErrorResponse, ErrorCodes, McpError
 import { getToolDefinitions, executeTool } from './tools.js';
 import { getResourceList, getResourceTemplates, readResource } from './resources.js';
 import { getPromptList, getPrompt } from './prompts.js';
+import { redactMcpResult } from '../sanitizer.js';
 
 const SERVER_NAME = 'rewind';
 const SUPPORTED_PROTOCOLS = ['2024-11-05', '2025-03-26', '2025-11-25', '2026-07-28'];
@@ -134,7 +135,7 @@ async function handleMessage(msg, storage, options = {}) {
       }
       const toolResult = await executeTool(name, args || {}, storage);
       return {
-        ...toolResult,
+        ...redactMcpResult(toolResult),
         resultType: 'complete'
       };
     }

@@ -4,6 +4,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { canonicalStringify, computeCanonicalDigest } from './canonical.js';
 import { safeAtomicRenameSync } from './projection.js';
+import { redactSecrets } from '../sanitizer.js';
 import { CliError } from '../errors.js';
 
 export const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -306,7 +307,7 @@ export function readLastJournalEvent(journalPath) {
  * @returns {{ evidenceHash: string, evidenceRef: string }}
  */
 export function saveEvidenceArtifact(ledgerDir, outputContent) {
-  const content = typeof outputContent === 'string' ? outputContent : '';
+  const content = typeof outputContent === 'string' ? redactSecrets(outputContent) : '';
   const evidenceHash = crypto.createHash('sha256').update(content, 'utf8').digest('hex');
   const evidenceDir = path.join(ledgerDir, 'evidence');
   const filename = `${evidenceHash}.log`;

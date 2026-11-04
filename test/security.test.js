@@ -344,8 +344,110 @@ describe('Security & Command Execution Safety Audit (test/security.test.js)', ()
 
     test('rejects path traversal attempts in verify command', async () => {
       const mock = createMockIO();
-      const code = await runCLI(['verify', '../1'], mock.io);
+      const code = await runCLI(['verify', '../1', '--yes'], mock.io);
       assert.equal(code, 1);
+    });
+  });
+
+  describe('Command Argument Redaction & Storage Hygiene', () => {
+    test('redacts secrets in command flags and arguments before saving to journal and store', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-sec-args-'));
+      try {
+        const rootFlag = `--root=${tmpDir}`;
+        const secretToken = 'ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+        const mock = createMockIO({ cwd: tmpDir });
+        await runCLI([
+          rootFlag,
+          'run',
+          process.execPath,
+          '-e',
+          'console.error("fail"); process.exit(1);',
+          '--token',
+          secretToken
+        ], mock.io);
+
+        // Read journal.jsonl
+        const journalPath = path.join(tmpDir, '.rewind', 'journal.jsonl');
+        assert.ok(fs.existsSync(journalPath));
+        const journalContent = fs.readFileSync(journalPath, 'utf8');
+        assert.equal(journalContent.includes(secretToken), false, 'Raw token must not appear in journal');
+        assert.ok(journalContent.includes('[REDACTED]') || journalContent.includes('[REDACTED_GITHUB_TOKEN]'));
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      }
+    });
+
+    test('rejects trivial verification commands to enforce red-to-green proof', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-sec-trivial-'));
+      try {
+        const rootFlag = `--root=${tmpDir}`;
+        const mock1 = createMockIO({ cwd: tmpDir });
+        await runCLI([rootFlag, 'run', process.execPath, '-e', 'console.error("fail"); process.exit(1);'], mock1.io);
+
+        const mock2 = createMockIO({ cwd: tmpDir });
+        const code2 = await runCLI([
+          rootFlag,
+          'recover',
+          '1',
+          '--change',
+          'fake fix',
+          '--verify-cmd',
+          'true'
+        ], mock2.io);
+
+        assert.equal(code2, 2);
+        assert.ok(mock2.getStderr().includes('trivial'));
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      }
+    });
+
+    test('rewind verify requires --yes in non-interactive sessions', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-sec-confirm-'));
+      try {
+        const rootFlag = `--root=${tmpDir}`;
+        const mock1 = createMockIO({ cwd: tmpDir });
+        await runCLI([rootFlag, 'run', process.execPath, '-e', 'console.error("fail"); process.exit(1);'], mock1.io);
+
+        const mock2 = createMockIO({ cwd: tmpDir });
+        await runCLI([
+          rootFlag,
+          'recover',
+          '1',
+          '--change',
+          'real fix',
+          '--verify-cmd',
+          `"${process.execPath}" -e "process.exit(0);"`
+        ], mock2.io);
+
+        // Attempt verify without --yes in non-interactive mode
+        const mock3 = createMockIO({ cwd: tmpDir, isTTY: false });
+        const code3 = await runCLI([rootFlag, 'verify', '1'], mock3.io);
+        assert.notEqual(code3, 0);
+        assert.ok(mock3.getStderr().includes('Confirmation required'));
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      }
+    });
+
+    test('rewind scrub sanitizes raw secrets from journal and re-seals hash chain', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rewind-sec-scrub-'));
+      try {
+        const rootFlag = `--root=${tmpDir}`;
+        const mock1 = createMockIO({ cwd: tmpDir });
+        await runCLI([rootFlag, 'run', process.execPath, '-e', 'console.error("fail"); process.exit(1);'], mock1.io);
+
+        const mockScrub = createMockIO({ cwd: tmpDir });
+        const scrubCode = await runCLI([rootFlag, 'scrub', '--yes'], mockScrub.io);
+        assert.equal(scrubCode, 0);
+        assert.ok(mockScrub.getStdout().includes('RE-SEAL'));
+
+        const mockDoctor = createMockIO({ cwd: tmpDir });
+        const doctorCode = await runCLI([rootFlag, 'doctor'], mockDoctor.io);
+        assert.equal(doctorCode, 0);
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      }
     });
   });
 });
