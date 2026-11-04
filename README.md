@@ -3,7 +3,7 @@
   <p><strong>Verified Failure Memory for Coding Agents</strong></p>
 
   [![npm version](https://img.shields.io/npm/v/rewind-cli.svg?color=blue&style=flat-square)](https://www.npmjs.com/package/rewind-cli)
-  [![CI Build](https://img.shields.io/github/actions/workflow/status/Tejas3479/rewind-cli/ci.yml?branch=main&style=flat-square)](https://github.com/Tejas3479/rewind-cli/actions)
+  [![CI Build](https://img.shields.io/github/actions/workflow/status/theo-73/rewind-cli/ci.yml?branch=main&style=flat-square)](https://github.com/theo-73/rewind-cli/actions)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](https://opensource.org/licenses/MIT)
   [![Node.js >=22.13.0](https://img.shields.io/badge/node-%3E%3D22.13.0-green.svg?style=flat-square)](https://nodejs.org)
   [![Zero Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg?style=flat-square)](https://www.npmjs.com/package/rewind-cli)
